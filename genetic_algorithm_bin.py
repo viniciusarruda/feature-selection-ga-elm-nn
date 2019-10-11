@@ -54,14 +54,30 @@ def _mutate(individual):
     return individual
 
 # Given two parents, it returns the offspring of them
+# def _crossover(male, female):
+#     """
+#     one-point fixed crossover
+#     """
+
+#     idx = male.shape[1] // 2
+
+#     offspring1 = np.hstack((male[0, :idx], female[0, idx:]))[np.newaxis, :]
+#     offspring2 = np.hstack((female[0, :idx], male[0, idx:]))[np.newaxis, :]
+
+#     return offspring1, offspring2
+
+
 def _crossover(male, female):
+    """
+    two-point random crossover
+    """
+    idx = np.random.randint(0, male.shape[1], 2)
+    idx.sort()
+    
+    offspring1 = np.hstack((male[0, :idx[0]], female[0, idx[0]:idx[1]], male[0, idx[1]:]))[np.newaxis, :]
+    offspring2 = np.hstack((female[0, :idx[0]], male[0, idx[0]:idx[1]], female[0, idx[1]:]))[np.newaxis, :]
 
-    idx = male.shape[1] // 2
-
-    offspring1 = np.hstack((male[0, :idx], female[0, idx:]))[np.newaxis, :]
-    offspring2 = np.hstack((female[0, :idx], male[0, idx:]))[np.newaxis, :]
-
-    return offspring1, offspring2
+    return offspring1, offspring2    
 
 
 def genetic_algorithm(fitness_func, dim, n_individuals=10, epochs=30, crossover_rate=0.9, mutation_rate=0.1):
@@ -104,8 +120,7 @@ def genetic_algorithm(fitness_func, dim, n_individuals=10, epochs=30, crossover_
         population[1][:] = -1.0
         children[:] = 0.0
 
-        # print('iter {:2d}, z= {:.4f}, x= {}'.format(e, fbest, best.round(2)))
-        print('iter {:2d}, z= {:.6f}'.format(e, fbest), flush=True)
+        print('epoch {:2d}, best fitness = {:.10f}'.format(e, fbest))
 
     return best, fbest
     
