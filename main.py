@@ -94,7 +94,9 @@ class ELMRegressor():
     def predict(self, X):
         X = np.column_stack([X, np.ones([X.shape[0], 1])])
         G = sigmoid(X.dot(self.random_weights))
-        return G.dot(self.w_elm)
+        Y_pred = G.dot(self.w_elm)
+        Y_pred = np.argmax(Y_pred, axis=1).astype(np.float)
+        return Y_pred
 
     def _format(self, Y):
         n_classes = int(np.amax(Y) + 1) # it will work only for data formated with classes [0, ..., n]
@@ -106,7 +108,7 @@ class ELMRegressor():
 
         # https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPClassifier.html#sklearn.neural_network.MLPClassifier.score
         # https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/base.py#L332
-        Y_pred = np.argmax(self.predict(X), axis=1).astype(np.float)
+        Y_pred = self.predict(X)
         score = np.count_nonzero(Y - Y_pred == 0.0) / float(Y.shape[0])
         return score
 
@@ -131,14 +133,13 @@ def elm_train_eval(X_train, Y_train, X_test, Y_test, mask=None, final_evaluation
     test_score = elm.score(X_test, Y_test)
 
     if final_evaluation:
-        # _y_pred = elm.predict(X_test)
-        # _y_pred = elm.predict(X_test)
-        # accuracy = accuracy_score(Y_test, _y_pred)
-        # recall = recall_score(Y_test, _y_pred)
-        # precision = precision_score(Y_test, _y_pred)
-        # fmeasure = f1_score(Y_test, _y_pred)
-        # confusion = confusion_matrix(Y_test, _y_pred)
-        return train_score, test_score, None, None, None, None, None
+        _y_pred = elm.predict(X_test)
+        accuracy = accuracy_score(Y_test, _y_pred)
+        recall = recall_score(Y_test, _y_pred, average='weighted')
+        precision = precision_score(Y_test, _y_pred, average='weighted')
+        fmeasure = f1_score(Y_test, _y_pred, average='weighted')
+        confusion = confusion_matrix(Y_test, _y_pred)
+        return train_score, test_score, accuracy, recall, precision, fmeasure, confusion
     else:
         return train_score, test_score
 
@@ -215,15 +216,15 @@ def main(net, dataset):
     print('If it does not match, it is because of the retraining of the net (net_train_eval) that used a different set of random weights.')
     print('So, it is not a bug !')
     print("##############################################################################")
-    if accuracy is not None:
-        print("Let's see the accuracy:", accuracy)
-        print("Let's see the recall score:", recall)
-        print("Let's see the precision score:", precision)
-        print("Let's see the f1 score:", fmeasure)
-        plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão')
-        print("##############################################################################")
+    print("Let's see the accuracy:", accuracy)
+    print("Let's see the recall score:", recall)
+    print("Let's see the precision score:", precision)
+    print("Let's see the f1 score:", fmeasure)
+    plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão')
+    print("##############################################################################")
 
 if __name__ == '__main__':
+
     for dataset in ['breastEW', 'hepatitis', 'multiple_features']:
         for net in ['NN', 'ELM']:
             print('### Running experiment with net {} and dataset {} ###'.format(net, dataset))
