@@ -48,7 +48,7 @@ def mlp_fitness(X_train, Y_train):
 
 
 @ignore_warnings(category=ConvergenceWarning)
-def mlp_train_eval(X_train, Y_train, X_test, Y_test, mask=None, final_evaluation=False):
+def mlp_train_eval(X_train, Y_train, X_test, Y_test, mask=None):
 
     if mask is not None:
         X_train = mask_input(X_train, mask)
@@ -57,19 +57,15 @@ def mlp_train_eval(X_train, Y_train, X_test, Y_test, mask=None, final_evaluation
     # should be concistent with net above
     clf = MLPClassifier(hidden_layer_sizes=(10,), random_state=SEED, max_iter=10) # in this case, max_iter is max_epochs
     clf.fit(X_train, Y_train)
-    train_score = clf.score(X_train, Y_train)
-    test_score = clf.score(X_test, Y_test) 
+    train_accuracy = clf.score(X_train, Y_train)
 
-    if final_evaluation:
-        _y_pred = clf.predict(X_test)
-        accuracy = accuracy_score(Y_test, _y_pred)
-        recall = recall_score(Y_test, _y_pred, average='weighted')
-        precision = precision_score(Y_test, _y_pred, average='weighted')
-        fmeasure = f1_score(Y_test, _y_pred, average='weighted')
-        confusion = confusion_matrix(Y_test, _y_pred)
-        return train_score, test_score, accuracy, recall, precision, fmeasure, confusion
-    else:
-        return train_score, test_score
+    _y_pred = clf.predict(X_test)
+    accuracy = accuracy_score(Y_test, _y_pred)
+    recall = recall_score(Y_test, _y_pred, average='weighted')
+    precision = precision_score(Y_test, _y_pred, average='weighted')
+    fmeasure = f1_score(Y_test, _y_pred, average='weighted')
+    confusion = confusion_matrix(Y_test, _y_pred)
+    return train_accuracy, accuracy, recall, precision, fmeasure, confusion   
 
 ####################################################################
 
@@ -104,24 +100,19 @@ class ELMRegressor():
         Y_[np.arange(Y.shape[0]), Y.astype(np.uint)] = 1.0
         return Y_
 
-    def score(self, X, Y):
 
-        # https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPClassifier.html#sklearn.neural_network.MLPClassifier.score
-        # https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/base.py#L332
-        Y_pred = self.predict(X)
-        score = np.count_nonzero(Y - Y_pred == 0.0) / float(Y.shape[0])
-        return score
-
-
+# Keeping the ELM score consistent with the sklearn MLP score
+# https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPClassifier.html#sklearn.neural_network.MLPClassifier.score
+# https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/base.py#L332
 def elm_fitness(X_train, Y_train):
 
     elm = ELMRegressor(n_hidden_units=100)
     elm.fit(X_train, Y_train)
-    train_score = elm.score(X_train, Y_train)
+    train_score = accuracy_score(Y_train, elm.predict(X_train))
     return train_score
 
 
-def elm_train_eval(X_train, Y_train, X_test, Y_test, mask=None, final_evaluation=False):
+def elm_train_eval(X_train, Y_train, X_test, Y_test, mask=None):
 
     if mask is not None:
         X_train = mask_input(X_train, mask)
@@ -129,26 +120,22 @@ def elm_train_eval(X_train, Y_train, X_test, Y_test, mask=None, final_evaluation
 
     elm = ELMRegressor(n_hidden_units=100)
     elm.fit(X_train, Y_train)
-    train_score = elm.score(X_train, Y_train)
-    test_score = elm.score(X_test, Y_test)
+    train_accuracy = accuracy_score(Y_train, elm.predict(X_train))
 
-    if final_evaluation:
-        _y_pred = elm.predict(X_test)
-        accuracy = accuracy_score(Y_test, _y_pred)
-        recall = recall_score(Y_test, _y_pred, average='weighted')
-        precision = precision_score(Y_test, _y_pred, average='weighted')
-        fmeasure = f1_score(Y_test, _y_pred, average='weighted')
-        confusion = confusion_matrix(Y_test, _y_pred)
-        return train_score, test_score, accuracy, recall, precision, fmeasure, confusion
-    else:
-        return train_score, test_score
+    _y_pred = elm.predict(X_test)
+    accuracy = accuracy_score(Y_test, _y_pred)
+    recall = recall_score(Y_test, _y_pred, average='weighted')
+    precision = precision_score(Y_test, _y_pred, average='weighted')
+    fmeasure = f1_score(Y_test, _y_pred, average='weighted')
+    confusion = confusion_matrix(Y_test, _y_pred)
+    return train_accuracy, accuracy, recall, precision, fmeasure, confusion
 
 
 ######################################################################
 
 # based ont the scikit learn documentation
 # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
-def plot_confusion_matrix(cm, classes, title, normalize=False):
+def plot_confusion_matrix(cm, classes, title, normalize=False, filepath=None):
     fig, ax = plt.subplots()
     im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     ax.figure.colorbar(im, ax=ax)
@@ -167,7 +154,11 @@ def plot_confusion_matrix(cm, classes, title, normalize=False):
             ax.text(j, i, format(cm[i, j], fmt),ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
     
     fig.tight_layout()
-    plt.show()
+    
+    if filepath == None:
+        plt.show()
+    else:
+        plt.savefig(filepath)
 
 def mask_input(X, mask):
 
@@ -209,18 +200,21 @@ def main(net, dataset):
 
     # I have added some extra and optinal outputs in the net_train_eval function
     # It's not elegant but...
-    train_score, test_score, accuracy, recall, precision, fmeasure, confusion = net_train_eval(X_train, Y_train, X_test, Y_test, best, final_evaluation=True)
+    train_accuracy, accuracy, recall, precision, fmeasure, confusion = net_train_eval(X_train, Y_train, X_test, Y_test, best)
 
-    print(train_score, test_score, best.sum(), fbest)
-    print('This result may match the 0.9 * (1.0 - train_score) + 0.1 * (n/nclasses) = fbest')
-    print('If it does not match, it is because of the retraining of the net (net_train_eval) that used a different set of random weights.')
-    print('So, it is not a bug !')
+    # This result may match the 0.9 * (1.0 - train_score) + 0.1 * (n/nclasses) = fbest
+    # If it does not match, it is because of the retraining of the net (net_train_eval) that used a different set of random weights
+    # So, it is not a bug !
     print("##############################################################################")
+    print("Let's see the training accuracy:", train_accuracy)
+    print("Let's see the best feature size: {} of {}".format(best.sum(), best.shape[1]))
+    print("Let's see the fitness found by the best feature:", fbest)
     print("Let's see the accuracy:", accuracy)
     print("Let's see the recall score:", recall)
     print("Let's see the precision score:", precision)
     print("Let's see the f1 score:", fmeasure)
-    plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão')
+    # I think if the normalized plot is better
+    plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão', filepath='output/{}/confusion_matrix/{}.jpg'.format(dataset, net))
     print("##############################################################################")
 
 if __name__ == '__main__':
