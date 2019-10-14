@@ -16,4 +16,6 @@ X = data[:, 2:]
 
 data = np.concatenate((X, Y), axis=1)
 
+print(data.shape)
+
 np.save('breastEW.npy', data)

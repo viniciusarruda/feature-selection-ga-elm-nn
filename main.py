@@ -16,9 +16,6 @@ from functools import partial
 import numpy as np
 import random
 
-SEED = 0
-
-
 def data_loader(path):
 
     data = np.load(path)
@@ -36,26 +33,33 @@ def data_normalizer(X):
     return X
 
 
+def compute_number_neurons(n_features, n_classes):
+    # Masters (1993)
+    return int(np.ceil(np.sqrt(n_features * n_classes)))
+
+
 ###################### Multi-layer Perceptron ######################
 
 @ignore_warnings(category=ConvergenceWarning)
-def mlp_fitness(X_train, Y_train):
+def mlp_fitness(n_features, n_classes, X_train, Y_train):
 
-    clf = MLPClassifier(hidden_layer_sizes=(30,), random_state=SEED, max_iter=10) # in this case, max_iter is max_epochs
+    n = compute_number_neurons(n_features, n_classes)
+    clf = MLPClassifier(hidden_layer_sizes=(n,), random_state=SEED, max_iter=10) # in this case, max_iter is max_epochs
     clf.fit(X_train, Y_train) 
     train_score = clf.score(X_train, Y_train) 
     return train_score
 
 
 @ignore_warnings(category=ConvergenceWarning)
-def mlp_train_eval(X_train, Y_train, X_test, Y_test, mask=None):
+def mlp_train_eval(n_features, n_classes, X_train, Y_train, X_test, Y_test, mask=None):
 
     if mask is not None:
         X_train = mask_input(X_train, mask)
         X_test = mask_input(X_test, mask)
 
     # should be concistent with net above
-    clf = MLPClassifier(hidden_layer_sizes=(10,), random_state=SEED, max_iter=10) # in this case, max_iter is max_epochs
+    n = compute_number_neurons(n_features, n_classes)
+    clf = MLPClassifier(hidden_layer_sizes=(n,), random_state=SEED, max_iter=10) # in this case, max_iter is max_epochs
     clf.fit(X_train, Y_train)
     train_accuracy = clf.score(X_train, Y_train)
 
@@ -76,18 +80,23 @@ def mlp_train_eval(X_train, Y_train, X_test, Y_test, mask=None):
 def sigmoid(X):
     return 1. / (1. + np.exp(-X))
 
-class ELMRegressor():
-    def __init__(self, n_hidden_units):
-        self.n_hidden_units = n_hidden_units
+class ELMClassifier():
+    def __init__(self, n_features, n_classes):
+
+        self.n_features = n_features
+        self.n_classes = n_classes
+        self.n_hidden_units = compute_number_neurons(n_features, n_classes)
 
     def fit(self, X, Y):
         Y = self._format(Y)
+        assert X.shape[1] == self.n_features and Y.shape[1] == self.n_classes
         X = np.column_stack([X, np.ones([X.shape[0], 1])])
-        self.random_weights = np.random.randn(X.shape[1], self.n_hidden_units)
+        self.random_weights = np.random.randn(self.n_features + 1, self.n_hidden_units)
         G = sigmoid(X.dot(self.random_weights))
         self.w_elm = np.linalg.pinv(G).dot(Y)
 
     def predict(self, X):
+        assert X.shape[1] == self.n_features
         X = np.column_stack([X, np.ones([X.shape[0], 1])])
         G = sigmoid(X.dot(self.random_weights))
         Y_pred = G.dot(self.w_elm)
@@ -95,8 +104,7 @@ class ELMRegressor():
         return Y_pred
 
     def _format(self, Y):
-        n_classes = int(np.amax(Y) + 1) # it will work only for data formated with classes [0, ..., n]
-        Y_ = np.zeros((Y.shape[0], n_classes)) - 1.0
+        Y_ = np.zeros((Y.shape[0], self.n_classes)) - 1.0
         Y_[np.arange(Y.shape[0]), Y.astype(np.uint)] = 1.0
         return Y_
 
@@ -104,21 +112,21 @@ class ELMRegressor():
 # Keeping the ELM score consistent with the sklearn MLP score
 # https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPClassifier.html#sklearn.neural_network.MLPClassifier.score
 # https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/base.py#L332
-def elm_fitness(X_train, Y_train):
+def elm_fitness(n_features, n_classes, X_train, Y_train):
 
-    elm = ELMRegressor(n_hidden_units=100)
+    elm = ELMClassifier(n_features, n_classes)
     elm.fit(X_train, Y_train)
     train_score = accuracy_score(Y_train, elm.predict(X_train))
     return train_score
 
 
-def elm_train_eval(X_train, Y_train, X_test, Y_test, mask=None):
+def elm_train_eval(n_features, n_classes, X_train, Y_train, X_test, Y_test, mask=None):
 
     if mask is not None:
         X_train = mask_input(X_train, mask)
         X_test = mask_input(X_test, mask)
 
-    elm = ELMRegressor(n_hidden_units=100)
+    elm = ELMClassifier(n_features, n_classes)
     elm.fit(X_train, Y_train)
     train_accuracy = accuracy_score(Y_train, elm.predict(X_train))
 
@@ -160,17 +168,24 @@ def plot_confusion_matrix(cm, classes, title, normalize=False, filepath=None):
     else:
         plt.savefig(filepath)
 
+
+def save_metrics(filename, metrics):
+
+    with open(filename, 'a') as f:
+        f.write(','.join(['{}'.format(m) for m in metrics]) + '\n')
+
+
 def mask_input(X, mask):
 
     return X * mask
 
 
-def fitness_func_wrapper(fitness_func, X_train, Y_train, mask):
+def fitness_func_wrapper(fitness_func, n_features, n_classes, X_train, Y_train, mask):
 
     rho = 0.9
     omega = 1.0 - rho
     X_train = mask_input(X_train, mask)
-    train_score = fitness_func(X_train, Y_train)
+    train_score = fitness_func(n_features, n_classes, X_train, Y_train)
     score = rho * (1.0 - train_score) + omega * mask.sum().astype(np.float) / mask.shape[1]
     return score
 
@@ -181,11 +196,10 @@ def main(net, dataset):
     random.seed(SEED)
 
     X, Y = data_loader('datasets/{}.npy'.format(dataset))
+    n_features, n_classes = {'breastEW':(30, 2), 'hepatitis':(19, 2), 'multiple_features':(649, 10)}[dataset]
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=SEED, stratify=Y)
     X_train = data_normalizer(X_train) # Yes, should be normalized after the train test split
     X_test = data_normalizer(X_test)
-
-    dim = X_train.shape[1]
     
     if net == 'NN':
         net_fitness, net_train_eval = mlp_fitness, mlp_train_eval
@@ -194,32 +208,34 @@ def main(net, dataset):
     else:
         ValueError('Algorithm {} not implemented.'.format(net))
 
-    fitness_func = partial(fitness_func_wrapper, net_fitness, X_train, Y_train)
+    fitness_func = partial(fitness_func_wrapper, net_fitness, n_features, n_classes, X_train, Y_train)
     
-    best, fbest = genetic_algorithm(fitness_func=fitness_func, dim=dim, n_individuals=50)
+    best, fbest = genetic_algorithm(fitness_func=fitness_func, dim=n_features, n_individuals=30)
 
     # I have added some extra and optinal outputs in the net_train_eval function
     # It's not elegant but...
-    train_accuracy, accuracy, recall, precision, fmeasure, confusion = net_train_eval(X_train, Y_train, X_test, Y_test, best)
+    train_accuracy, accuracy, recall, precision, fmeasure, confusion = net_train_eval(n_features, n_classes, X_train, Y_train, X_test, Y_test, best)
 
     # This result may match the 0.9 * (1.0 - train_score) + 0.1 * (n/nclasses) = fbest
     # If it does not match, it is because of the retraining of the net (net_train_eval) that used a different set of random weights
     # So, it is not a bug !
     print("##############################################################################")
     print("Let's see the training accuracy:", train_accuracy)
-    print("Let's see the best feature size: {} of {}".format(best.sum(), best.shape[1]))
+    print("Let's see the best feature size: {} of {}".format(best.sum(), n_features))
     print("Let's see the fitness found by the best feature:", fbest)
     print("Let's see the accuracy:", accuracy)
     print("Let's see the recall score:", recall)
     print("Let's see the precision score:", precision)
     print("Let's see the f1 score:", fmeasure)
     # I think if the normalized plot is better
-    plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão', filepath='output/{}/confusion_matrix/{}.jpg'.format(dataset, net))
+    save_metrics('output/{}/{}_{}.log'.format(dataset, SEED, net), [best.sum(), fbest, accuracy, recall, precision, fmeasure])
+    plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão', filepath='output/{}/confusion_matrix/{}_{}.jpg'.format(dataset, SEED, net))
     print("##############################################################################")
 
 if __name__ == '__main__':
 
-    for dataset in ['breastEW', 'hepatitis', 'multiple_features']:
-        for net in ['NN', 'ELM']:
-            print('### Running experiment with net {} and dataset {} ###'.format(net, dataset))
-            main(net, dataset)
+    for SEED in range(10):
+        for dataset in ['breastEW', 'hepatitis', 'multiple_features']:
+            for net in ['NN', 'ELM']:
+                print('### Running experiment with net {}, dataset {} and SEED {} ###'.format(net, dataset, SEED))
+                main(net, dataset)
