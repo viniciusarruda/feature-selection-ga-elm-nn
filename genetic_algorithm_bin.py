@@ -80,7 +80,7 @@ def _crossover(male, female):
     return offspring1, offspring2    
 
 
-def genetic_algorithm(fitness_func, dim, n_individuals=10, epochs=30, crossover_rate=0.9, mutation_rate=0.1):
+def genetic_algorithm(fitness_func, dim, n_individuals=10, epochs=50, crossover_rate=0.9, mutation_rate=0.1):
     
     assert n_individuals % 2 == 0
     
