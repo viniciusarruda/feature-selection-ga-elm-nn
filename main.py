@@ -9,12 +9,15 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import confusion_matrix
 from sklearn.utils.multiclass import unique_labels
+import time
 
 import matplotlib.pyplot as plt
 
 from functools import partial
 import numpy as np
 import random
+
+# TODO: Clean code
 
 def data_loader(path):
 
@@ -143,14 +146,17 @@ def elm_train_eval(n_features, n_classes, X_train, Y_train, X_test, Y_test, mask
 
 # based ont the scikit learn documentation
 # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
-def plot_confusion_matrix(cm, classes, title, normalize=False, filepath=None):
+def plot_confusion_matrix(cm, classes, normalize=True, filepath=None):
+
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
     fig, ax = plt.subplots()
     im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     ax.figure.colorbar(im, ax=ax)
     ax.set(xticks=np.arange(cm.shape[1]),
            yticks=np.arange(cm.shape[0]),
            xticklabels=classes, yticklabels=classes,
-           title=title,
            ylabel='True label',
            xlabel='Predicted label')
     
@@ -167,6 +173,7 @@ def plot_confusion_matrix(cm, classes, title, normalize=False, filepath=None):
         plt.show()
     else:
         plt.savefig(filepath)
+    plt.close()
 
 
 def save_metrics(filename, metrics):
@@ -190,10 +197,41 @@ def fitness_func_wrapper(fitness_func, n_features, n_classes, X_train, Y_train, 
     return score
 
 
-def main(net, dataset):
+def baseline(net, dataset):
 
-    np.random.seed(SEED)
-    random.seed(SEED)
+    X, Y = data_loader('datasets/{}.npy'.format(dataset))
+    n_features, n_classes = {'breastEW':(30, 2), 'hepatitis':(19, 2), 'multiple_features':(649, 10)}[dataset]
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=SEED, stratify=Y)
+    X_train = data_normalizer(X_train) # Yes, should be normalized after the train test split
+    X_test = data_normalizer(X_test)
+    
+    if net == 'NN':
+        net_train_eval = mlp_train_eval
+    elif net == 'ELM':
+        net_train_eval = elm_train_eval
+    else:
+        ValueError('Algorithm {} not implemented.'.format(net))
+        
+    start_time = time.clock()
+    train_accuracy, accuracy, recall, precision, fmeasure, confusion = net_train_eval(n_features, n_classes, X_train, Y_train, X_test, Y_test, mask=None)
+    final_time = time.clock() - start_time
+    
+    # This result may match the 0.9 * (1.0 - train_score) + 0.1 * (n/nclasses) = fbest
+    # If it does not match, it is because of the retraining of the net (net_train_eval) that used a different set of random weights
+    # So, it is not a bug !
+    print("##############################################################################")
+    print("Let's see the training accuracy:", train_accuracy)
+    print("Let's see the accuracy:", accuracy)
+    print("Let's see the recall score:", recall)
+    print("Let's see the precision score:", precision)
+    print("Let's see the f1 score:", fmeasure)
+    print("Let's see the time spent:", final_time)
+    save_metrics('output/{}/baseline_{}.log'.format(dataset, net), [SEED, final_time, accuracy, recall, precision, fmeasure])
+    plot_confusion_matrix(confusion, unique_labels(Y_test), filepath='output/{}/confusion_matrix/baseline_{}_{}.jpg'.format(dataset, SEED, net))
+    print("##############################################################################")
+
+
+def main(net, dataset):
 
     X, Y = data_loader('datasets/{}.npy'.format(dataset))
     n_features, n_classes = {'breastEW':(30, 2), 'hepatitis':(19, 2), 'multiple_features':(649, 10)}[dataset]
@@ -210,11 +248,10 @@ def main(net, dataset):
 
     fitness_func = partial(fitness_func_wrapper, net_fitness, n_features, n_classes, X_train, Y_train)
     
-    best, fbest = genetic_algorithm(fitness_func=fitness_func, dim=n_features, n_individuals=30)
-
-    # I have added some extra and optinal outputs in the net_train_eval function
-    # It's not elegant but...
+    start_time = time.clock()
+    best, fbest = genetic_algorithm(fitness_func=fitness_func, dim=n_features)
     train_accuracy, accuracy, recall, precision, fmeasure, confusion = net_train_eval(n_features, n_classes, X_train, Y_train, X_test, Y_test, best)
+    final_time = time.clock() - start_time
 
     # This result may match the 0.9 * (1.0 - train_score) + 0.1 * (n/nclasses) = fbest
     # If it does not match, it is because of the retraining of the net (net_train_eval) that used a different set of random weights
@@ -227,15 +264,22 @@ def main(net, dataset):
     print("Let's see the recall score:", recall)
     print("Let's see the precision score:", precision)
     print("Let's see the f1 score:", fmeasure)
-    # I think if the normalized plot is better
-    save_metrics('output/{}/{}_{}.log'.format(dataset, SEED, net), [best.sum(), fbest, accuracy, recall, precision, fmeasure])
-    plot_confusion_matrix(confusion, unique_labels(Y_test), 'Confusão', filepath='output/{}/confusion_matrix/{}_{}.jpg'.format(dataset, SEED, net))
+    print("Let's see the time spent:", final_time)
+    save_metrics('output/{}/{}.log'.format(dataset, net), [SEED, final_time, best.sum(), fbest, accuracy, recall, precision, fmeasure])
+    plot_confusion_matrix(confusion, unique_labels(Y_test), filepath='output/{}/confusion_matrix/{}_{}.jpg'.format(dataset, SEED, net))
     print("##############################################################################")
 
 if __name__ == '__main__':
 
-    for SEED in range(10):
+    for SEED in range(20):
         for dataset in ['breastEW', 'hepatitis', 'multiple_features']:
             for net in ['NN', 'ELM']:
+
+                np.random.seed(SEED)
+                random.seed(SEED)
+                
                 print('### Running experiment with net {}, dataset {} and SEED {} ###'.format(net, dataset, SEED))
                 main(net, dataset)
+
+                print('### Running baseline experiment with net {}, dataset {} and SEED {} ###'.format(net, dataset, SEED))
+                baseline(net, dataset)
